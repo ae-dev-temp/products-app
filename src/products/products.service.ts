@@ -34,8 +34,12 @@ export class ProductsService {
 
     @Cron('0 09 * * *', { timeZone: 'UTC' })
     async handleCron() {
-        this.logger.log(`Started importing products.`);
-        await this.importProductsData();
+        try {
+            this.logger.log(`Started importing products.`);
+            await this.importProductsData();
+        } catch (error) {
+            this.logger.log('Process failed: ', error.message)
+        }
     }
 
     async importProductsData() {
@@ -56,7 +60,7 @@ export class ProductsService {
                 try {
                     await this.proccessData(chunk);
                 } catch (error) {
-                    this.logger.error('Process failed: ' + error.message);
+                    this.logger.error('Chunk failed: ' + error.message);
                 }
 
                 parser.resume();
@@ -90,7 +94,7 @@ export class ProductsService {
                     this.constructManufacturerData(line);
             }
 
-            this.groupVariants(line, products);
+            await this.groupVariants(line, products);
             this.groupImages(line, products);
             this.groupOptions(line, products);
         }
@@ -153,14 +157,14 @@ export class ProductsService {
         };
     }
 
-    private constructVariantData(line: any) {
+    private async constructVariantData(line: any) {
         return {
             id: nanoid(),
             description: this.openaiClient
-                ? this.generateDescription(
+                ? (await this.generateDescription(
                       line['ProductName'],
                       line['ItemDescription'],
-                  )
+                  ))
                 : line['ItemDescription'],
             packaging: line['PKG'],
             price: Number(line['UnitPrice'] || 0),
@@ -216,9 +220,9 @@ export class ProductsService {
         return !!Number(value || 0);
     }
 
-    private groupVariants(line: any, products: any) {
+    private async groupVariants(line: any, products: any) {
         const sku = this.getItemSku(line);
-        const variant = this.constructVariantData(line);
+        const variant = await this.constructVariantData(line);
         const productId = line['ProductID'];
 
         if (!products[productId].data.variants[sku]) {
